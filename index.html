@@ -113,7 +113,7 @@
 <section id="editor">
   <header>
     <h1>Voice Teleprompter</h1>
-    <p>Der Text folgt deiner Stimme. <span style="opacity:.6">Version 5</span></p>
+    <p>Der Text folgt deiner Stimme. <span style="opacity:.6">Version 6</span></p>
   </header>
   <div class="editor-body">
     <textarea id="script" spellcheck="false" aria-label="Text für den Teleprompter"></textarea>
@@ -152,7 +152,12 @@
         </div>
       </div>
       <div class="card">
-        <p class="hint"><code>[Pause]</code> zeigt eine Regieanweisung, die beim Mitlesen übersprungen wird. <code>*Wort*</code> wird als Betonung unterstrichen.</p>
+        <span class="cap">Regieanweisungen</span>
+        <div class="seg" role="group" aria-label="Regieanweisungen">
+          <button type="button" id="cuesOff" class="on">Aus</button>
+          <button type="button" id="cuesOn">An</button>
+        </div>
+        <p class="hint" id="cueHint"><code>[Pause]</code> zeigt eine Regieanweisung, die beim Mitlesen übersprungen wird. <code>*Wort*</code> wird als Betonung unterstrichen.</p>
       </div>
       <div class="card">
         <div class="stat"><span>Wörter</span><b id="words">0</b></div>
@@ -203,7 +208,7 @@
   var $ = function (id) { return document.getElementById(id); };
   var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   var S = {
-    mode: SR ? "voice" : "auto", lang: "de-DE", wpm: 140, size: 64, mirror: false, linePos: "top", col: "narrow",
+    mode: SR ? "voice" : "auto", lang: "de-DE", wpm: 140, size: 64, mirror: false, linePos: "top", col: "narrow", cues: false,
     words: [], cur: 0, pos: 0, target: 0, dist: 1, lineY: 0, lineH: 86,
     running: false, raf: 0, last: 0, rec: null, listening: false, hideT: 0
   };
@@ -221,12 +226,13 @@
       S.mirror = !!o.mirror;
       if (o.linePos) S.linePos = o.linePos;
       if (o.col) S.col = o.col;
+      S.cues = !!o.cues;
     } catch (e) { $("script").value = SAMPLE; }
   }
   function save() {
     try {
       localStorage.setItem("vp_text", $("script").value);
-      localStorage.setItem("vp_opts", JSON.stringify({ mode: S.mode, lang: S.lang, wpm: S.wpm, size: S.size, mirror: S.mirror, linePos: S.linePos, col: S.col }));
+      localStorage.setItem("vp_opts", JSON.stringify({ mode: S.mode, lang: S.lang, wpm: S.wpm, size: S.size, mirror: S.mirror, linePos: S.linePos, col: S.col, cues: S.cues }));
     } catch (e) {}
   }
 
@@ -242,6 +248,9 @@
     $("voiceOpts").hidden = S.mode !== "voice";
     $("autoOpts").hidden = S.mode !== "auto";
     $("lang").value = S.lang; $("wpm").value = S.wpm;
+    $("cuesOff").classList.toggle("on", !S.cues);
+    $("cuesOn").classList.toggle("on", S.cues);
+    $("cueHint").hidden = !S.cues;
     $("posTop").classList.toggle("on", S.linePos === "top");
     $("posMid").classList.toggle("on", S.linePos === "mid");
     document.querySelectorAll("[data-col]").forEach(function (b) { b.classList.toggle("on", b.dataset.col === S.col); });
@@ -258,6 +267,8 @@
   $("modeAuto").addEventListener("click", function () { S.mode = "auto"; refreshEditor(); });
   $("lang").addEventListener("change", function () { S.lang = this.value; refreshEditor(); });
   $("wpm").addEventListener("input", function () { var v = parseInt(this.value, 10); if (v >= 60 && v <= 260) { S.wpm = v; refreshEditor(); } });
+  $("cuesOff").addEventListener("click", function () { S.cues = false; refreshEditor(); });
+  $("cuesOn").addEventListener("click", function () { S.cues = true; refreshEditor(); });
   $("posTop").addEventListener("click", function () { S.linePos = "top"; refreshEditor(); });
   $("posMid").addEventListener("click", function () { S.linePos = "mid"; refreshEditor(); });
   document.querySelectorAll("[data-col]").forEach(function (b) { b.addEventListener("click", function () { S.col = b.dataset.col; refreshEditor(); }); });
@@ -276,6 +287,7 @@
       para.trim().split(/(\[[^\]]*\]|\*[^*]+\*)/).forEach(function (seg) {
         if (!seg || !seg.trim()) return;
         if (seg.charAt(0) === "[" && seg.charAt(seg.length - 1) === "]") {
+          if (!S.cues) return;
           if (!first) p.appendChild(document.createTextNode(" "));
           var c = document.createElement("span");
           c.className = "cue"; c.textContent = seg.slice(1, -1).trim();
@@ -289,7 +301,7 @@
           var n = norm(tok);
           if (!n) { p.appendChild(document.createTextNode(tok)); return; }
           var s = document.createElement("span");
-          s.className = emph ? "w em" : "w"; s.textContent = tok; s.dataset.i = S.words.length;
+          s.className = emph && S.cues ? "w em" : "w"; s.textContent = tok; s.dataset.i = S.words.length;
           p.appendChild(s);
           S.words.push({ el: s, n: n });
         });
