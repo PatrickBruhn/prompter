@@ -44,7 +44,7 @@
 
   /* Prompter */
   #prompter { position: fixed; inset: 0; background: #000; }
-  #stage { position: absolute; inset: 0; overflow: hidden; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+  #stage { position: absolute; inset: 0; overflow: hidden; touch-action: none; overscroll-behavior: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
   #stage.mirror { transform: scaleX(-1); }
   #inner { will-change: transform; padding-left: 7vw; padding-right: 7vw; }
   #copy { position: relative; margin: 0 auto; max-width: var(--col, 30ch); font-weight: 700; line-height: 1.35; color: #fff; overflow-wrap: break-word; }
@@ -118,7 +118,7 @@
 <section id="editor">
   <header>
     <h1>Voice Teleprompter</h1>
-    <p>Der Text folgt deiner Stimme. <span style="opacity:.6">Version 7</span></p>
+    <p>Der Text folgt deiner Stimme. <span style="opacity:.6">Version 8</span></p>
   </header>
   <div class="editor-body">
     <textarea id="script" spellcheck="false" aria-label="Text für den Teleprompter"></textarea>
@@ -218,7 +218,7 @@
   var S = {
     mode: SR ? "voice" : "auto", lang: "de-DE", wpm: 140, size: 64, mirror: false, linePos: "top", col: "narrow", cues: false,
     words: [], cur: 0, pos: 0, target: 0, dist: 1, lineY: 0, lineH: 86,
-    running: false, exact: true, restartT: 0, raf: 0, last: 0, rec: null, listening: false, hideT: 0
+    running: false, exact: true, drag: null, fling: 0, noClick: false, wheelT: 0, restartT: 0, raf: 0, last: 0, rec: null, listening: false, hideT: 0
   };
 
   // ---------- Speicher ----------
@@ -435,7 +435,14 @@
   }
   function loop(ts) {
     var dt = Math.min(0.1, (ts - S.last) / 1000); S.last = ts;
-    if (S.mode === "voice") {
+    if (S.fling) {
+      S.pos = Math.max(0, Math.min(S.dist, S.pos + S.fling * dt));
+      S.fling *= Math.exp(-dt * 4);
+      S.target = S.pos;
+      if (Math.abs(S.fling) < 30 || S.pos <= 0 || S.pos >= S.dist) { S.fling = 0; settle(); }
+    } else if (S.drag) {
+      // Finger bestimmt die Position
+    } else if (S.mode === "voice") {
       S.pos += (S.target - S.pos) * (1 - Math.exp(-dt * 7));
     } else if (S.running) {
       var pxPerSec = S.dist / Math.max(1, S.words.length / S.wpm * 60);
@@ -474,6 +481,7 @@
     }, delay);
   }
   function startMic() {
+    if (S.fling) { S.fling = 0; settle(); }
     if (!SR) { pill("err", "Keine Spracherkennung"); return; }
     if (!S.rec || S.rec.lang !== S.lang) S.rec = makeRec();
     S.listening = true;
@@ -487,7 +495,7 @@
   }
 
   // ---------- Auto-Modus ----------
-  function startAuto() { if (S.pos >= S.dist) S.pos = 0; S.running = true; pill("live", "Läuft"); setPlayLabel(); fadeSoon(); wake(); }
+  function startAuto() { S.fling = 0; if (S.pos >= S.dist) S.pos = 0; S.running = true; pill("live", "Läuft"); setPlayLabel(); fadeSoon(); wake(); }
   function stopAuto() { S.running = false; pill("", "Pausiert"); setPlayLabel(); showBar(); }
 
   function setPlayLabel() {
@@ -546,9 +554,58 @@
   });
   $("mirror").addEventListener("click", function () { S.mirror = !S.mirror; $("stage").classList.toggle("mirror", S.mirror); this.classList.toggle("on", S.mirror); save(); });
 
+  // ---------- Wischen, solange der Prompter nicht aktiv ist ----------
+  function active() { return S.listening || S.running; }
+  // Nach dem Wischen rastet die Zeile ein, die dem Band am nächsten ist
+  function settle() {
+    var W = S.words; if (!W.length) return;
+    var want = S.pos + S.lineH / 2, best = 0, bd = Infinity;
+    for (var k = 0; k < W.length; k++) {
+      var c = W[k].el.offsetTop + W[k].el.offsetHeight / 2, d = Math.abs(c - want);
+      if (d < bd) { bd = d; best = k; } else if (c > want + S.lineH) break;
+    }
+    // erstes Wort dieser Zeile wählen
+    var top = W[best].el.offsetTop;
+    while (best > 0 && Math.abs(W[best - 1].el.offsetTop - top) < 2) best--;
+    if (S.mode === "voice") setCur(best, true);
+  }
+  var stage = $("stage");
+  stage.addEventListener("pointerdown", function (e) {
+    if (active() || $("bar").classList.contains("faded")) return;
+    S.fling = 0;
+    S.drag = { y: e.clientY, pos: S.pos, moved: false, ly: e.clientY, lt: performance.now(), v: 0 };
+    try { stage.setPointerCapture(e.pointerId); } catch (x) {}
+  });
+  stage.addEventListener("pointermove", function (e) {
+    var d = S.drag; if (!d) return;
+    var dy = e.clientY - d.y;
+    if (!d.moved && Math.abs(dy) > 8) d.moved = true;
+    if (!d.moved) return;
+    S.pos = Math.max(0, Math.min(S.dist, d.pos - dy)); S.target = S.pos;
+    var now = performance.now(), dt = (now - d.lt) / 1000;
+    if (dt > 0) d.v = 0.7 * (-(e.clientY - d.ly) / dt) + 0.3 * d.v;
+    d.ly = e.clientY; d.lt = now;
+  });
+  function endDrag() {
+    var d = S.drag; S.drag = null; if (!d || !d.moved) return;
+    S.noClick = true; setTimeout(function () { S.noClick = false; }, 50);
+    if (performance.now() - d.lt < 80 && Math.abs(d.v) > 200) S.fling = Math.max(-4000, Math.min(4000, d.v));
+    else settle();
+  }
+  stage.addEventListener("pointerup", endDrag);
+  stage.addEventListener("pointercancel", endDrag);
+  // Mausrad und Trackpad am Rechner
+  stage.addEventListener("wheel", function (e) {
+    if (active()) return;
+    e.preventDefault();
+    S.pos = Math.max(0, Math.min(S.dist, S.pos + e.deltaY)); S.target = S.pos;
+    clearTimeout(S.wheelT); S.wheelT = setTimeout(settle, 180);
+  }, { passive: false });
+
   // Tippen auf ein Wort setzt die Position dorthin, Tippen daneben zeigt die Leiste
   $("stage").addEventListener("click", function (e) {
     // Erster Tipp bei ausgeblendeter Leiste zeigt nur die Leiste, damit nichts versehentlich springt
+    if (S.noClick) return;
     if ($("bar").classList.contains("faded")) { showBar(); fadeSoon(); return; }
     var w = e.target.closest && e.target.closest(".w");
     if (w) jumpTo(parseInt(w.dataset.i, 10));
