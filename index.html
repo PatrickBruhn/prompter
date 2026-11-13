@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Voice Teleprompter</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0b0b0c; --panel: #161618; --line: #2b2b30; --text: #f4f1ea;
+    --muted: #9c9aa3; --accent: #ffc83d; --ok: #6fdc8c; --bad: #ff6b6b;
+    --font: "Atkinson Hyperlegible", system-ui, -apple-system, "Segoe UI", sans-serif;
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; background: var(--bg); color: var(--text); font-family: var(--font); -webkit-text-size-adjust: 100%; }
+  [hidden] { display: none !important; }
+  button, input, textarea, select { font: inherit; color: inherit; }
+  :focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+
+  /* Editor */
+  #editor { min-height: 100%; display: flex; flex-direction: column; gap: 16px; padding: 20px 24px 24px; max-width: 1200px; margin: 0 auto; }
+  #editor header { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+  h1 { font-size: 26px; margin: 0; }
+  #editor header p { margin: 0; color: var(--muted); font-size: 15px; }
+  .editor-body { flex: 1; display: flex; gap: 20px; min-height: 0; }
+  #script { flex: 1; min-width: 0; min-height: 60vh; resize: none; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 18px 20px; font-size: 20px; line-height: 1.5; }
+  .side { width: 300px; flex-shrink: 0; display: flex; flex-direction: column; gap: 14px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 16px; display: flex; flex-direction: column; gap: 10px; }
+  .card label, .card .cap { font-size: 14px; color: var(--muted); }
+  .seg { display: flex; background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 3px; }
+  .seg button { flex: 1; border: 0; background: transparent; padding: 10px; border-radius: 8px; cursor: pointer; color: var(--muted); }
+  .seg button.on { background: var(--accent); color: #1a1400; font-weight: 700; }
+  select, .num { background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; font-size: 17px; width: 100%; }
+  .stat { display: flex; justify-content: space-between; font-size: 15px; color: var(--muted); }
+  .stat b { color: var(--text); font-variant-numeric: tabular-nums; }
+  #support { font-size: 14px; line-height: 1.4; margin: 0; }
+  #support.ok { color: var(--ok); } #support.bad { color: var(--accent); }
+  .primary { background: var(--accent); color: #1a1400; border: 0; border-radius: 14px; font-weight: 700; font-size: 20px; padding: 18px; cursor: pointer; }
+  .ghost { background: transparent; border: 1px solid var(--line); border-radius: 10px; padding: 10px 14px; font-size: 15px; color: var(--muted); cursor: pointer; }
+
+  /* Prompter */
+  #prompter { position: fixed; inset: 0; background: #000; }
+  #stage { position: absolute; inset: 0; overflow: hidden; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
+    -webkit-mask-image: linear-gradient(to bottom, rgba(0,0,0,.2) 0%, rgba(0,0,0,.35) 26%, #000 38%, #000 100%);
+            mask-image: linear-gradient(to bottom, rgba(0,0,0,.2) 0%, rgba(0,0,0,.35) 26%, #000 38%, #000 100%); }
+  #stage.mirror { transform: scaleX(-1); }
+  #inner { will-change: transform; padding-left: 7vw; padding-right: 7vw; }
+  #copy { position: relative; margin: 0 auto; max-width: 1400px; font-weight: 700; line-height: 1.35; color: #fff; overflow-wrap: break-word; }
+  #copy p { margin: 0 0 0.6em; }
+  #copy .w { transition: color .25s; cursor: pointer; }
+  #copy .w.said { color: #6b6b72; }
+  #copy .w.next { color: var(--accent); }
+  #line { position: absolute; left: 0; right: 0; top: 34%; pointer-events: none; }
+  #line::before, #line::after { content: ""; position: absolute; top: -12px; border: 12px solid transparent; }
+  #line::before { left: 0; border-left-color: var(--accent); border-right-width: 0; }
+  #line::after { right: 0; border-right-color: var(--accent); border-left-width: 0; }
+
+  #pill { position: absolute; top: 14px; right: 16px; display: flex; align-items: center; gap: 8px; padding: 8px 14px; border-radius: 999px; background: rgba(20,20,22,.85); border: 1px solid var(--line); font-size: 15px; color: var(--muted); pointer-events: none; }
+  #pill i { width: 10px; height: 10px; border-radius: 50%; background: var(--muted); }
+  #pill.live i { background: var(--ok); box-shadow: 0 0 0 0 rgba(111,220,140,.7); animation: pulse 1.6s infinite; }
+  #pill.live { color: var(--text); }
+  #pill.err i { background: var(--bad); }
+  @keyframes pulse { 70% { box-shadow: 0 0 0 10px rgba(111,220,140,0); } 100% { box-shadow: 0 0 0 0 rgba(111,220,140,0); } }
+  #heard { position: absolute; top: 16px; left: 16px; right: 220px; font-size: 15px; color: #6b6b72; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; direction: rtl; text-align: left; }
+
+  #bar { position: absolute; left: 0; right: 0; bottom: 0; padding: 28px 20px 18px; background: linear-gradient(to top, rgba(0,0,0,.94), rgba(0,0,0,0)); transition: opacity .35s; }
+  #bar.faded { opacity: 0; pointer-events: none; }
+  #progress { height: 4px; background: #2b2b30; border-radius: 2px; overflow: hidden; margin-bottom: 14px; }
+  #progress i { display: block; height: 100%; width: 0; background: var(--accent); }
+  .controls { display: flex; align-items: center; justify-content: center; gap: 10px; flex-wrap: wrap; }
+  .grp { display: flex; align-items: center; gap: 6px; background: #151517; border: 1px solid var(--line); border-radius: 14px; padding: 4px; }
+  .grp .lbl { padding: 0 8px; font-size: 14px; color: var(--muted); min-width: 64px; text-align: center; font-variant-numeric: tabular-nums; }
+  .btn { min-width: 52px; height: 52px; padding: 0 16px; border-radius: 10px; border: 0; background: #232327; color: var(--text); font-size: 18px; font-weight: 700; cursor: pointer; }
+  .btn.on { background: var(--accent); color: #1a1400; }
+  .play { min-width: 160px; height: 60px; background: var(--accent); color: #1a1400; font-size: 21px; border-radius: 16px; }
+
+  @media (max-width: 760px) {
+    #editor { padding: 14px; }
+    .editor-body { flex-direction: column; }
+    .side { width: 100%; }
+    #script { min-height: 240px; }
+  }
+  /* Safe Areas für iPhone mit Notch oder Dynamic Island */
+  #editor { padding-top: max(20px, env(safe-area-inset-top)); padding-left: max(24px, env(safe-area-inset-left)); padding-right: max(24px, env(safe-area-inset-right)); }
+  #bar { padding-bottom: max(18px, env(safe-area-inset-bottom)); padding-left: max(20px, env(safe-area-inset-left)); padding-right: max(20px, env(safe-area-inset-right)); }
+  #pill { top: max(14px, env(safe-area-inset-top)); right: max(16px, env(safe-area-inset-right)); }
+  #heard { top: max(16px, env(safe-area-inset-top)); left: max(16px, env(safe-area-inset-left)); }
+
+  /* iPhone hochkant und quer: kompakte Bedienleiste */
+  @media (max-width: 600px), (max-height: 500px) {
+    #bar { padding-top: 18px; }
+    #progress { margin-bottom: 10px; }
+    .controls { gap: 6px; }
+    .grp { padding: 3px; gap: 3px; border-radius: 12px; }
+    .grp .lbl { min-width: 38px; padding: 0 4px; font-size: 12px; }
+    .btn { min-width: 44px; height: 44px; padding: 0 10px; font-size: 15px; border-radius: 9px; }
+    .play { min-width: 112px; height: 50px; font-size: 18px; border-radius: 14px; }
+    #pill { padding: 6px 10px; font-size: 13px; }
+    #heard { right: 140px; font-size: 13px; }
+    #inner { padding-left: 6vw; padding-right: 6vw; }
+    h1 { font-size: 22px; }
+  }
+  @media (prefers-reduced-motion: reduce) { #bar, #copy .w { transition: none; } #pill.live i { animation: none; } }
+</style>
+</head>
+<body>
+
+<section id="editor">
+  <header>
+    <h1>Voice Teleprompter</h1>
+    <p>Der Text folgt deiner Stimme.</p>
+  </header>
+  <div class="editor-body">
+    <textarea id="script" spellcheck="false" aria-label="Text für den Teleprompter"></textarea>
+    <aside class="side">
+      <div class="card">
+        <span class="cap">Steuerung</span>
+        <div class="seg" role="group" aria-label="Steuerung">
+          <button type="button" id="modeVoice" class="on">Stimme</button>
+          <button type="button" id="modeAuto">Automatisch</button>
+        </div>
+        <div id="voiceOpts">
+          <label for="lang">Sprache</label>
+          <select id="lang">
+            <option value="de-DE">Deutsch</option>
+            <option value="en-US">Englisch (US)</option>
+            <option value="en-GB">Englisch (UK)</option>
+          </select>
+        </div>
+        <div id="autoOpts" hidden>
+          <label for="wpm">Wörter pro Minute</label>
+          <input id="wpm" class="num" type="number" inputmode="numeric" min="60" max="260" value="140">
+        </div>
+        <p id="support"></p>
+      </div>
+      <div class="card">
+        <div class="stat"><span>Wörter</span><b id="words">0</b></div>
+        <div class="stat"><span>Sprechdauer ca.</span><b id="dur">0:00</b></div>
+      </div>
+      <button class="ghost" id="reset" type="button">Beispieltext laden</button>
+      <button class="primary" id="go" type="button">Prompter starten</button>
+    </aside>
+  </div>
+</section>
+
+<section id="prompter" hidden>
+  <div id="stage"><div id="inner"><div id="copy"></div></div></div>
+  <div id="line"></div>
+  <div id="heard" aria-hidden="true"></div>
+  <div id="pill"><i></i><span id="pillTxt">Bereit</span></div>
+  <div id="bar">
+    <div id="progress"><i id="fill"></i></div>
+    <div class="controls">
+      <button class="btn" id="back" type="button">Bearbeiten</button>
+      <button class="btn" id="restart" type="button">Anfang</button>
+      <div class="grp" id="speedGrp" hidden>
+        <button class="btn" id="slower" type="button" aria-label="Langsamer">−</button>
+        <span class="lbl" id="speedLbl">140/min</span>
+        <button class="btn" id="faster" type="button" aria-label="Schneller">+</button>
+      </div>
+      <button class="btn play" id="play" type="button">Mikro an</button>
+      <div class="grp">
+        <button class="btn" id="smaller" type="button" aria-label="Schrift kleiner">A−</button>
+        <span class="lbl" id="sizeLbl">64</span>
+        <button class="btn" id="bigger" type="button" aria-label="Schrift größer">A+</button>
+      </div>
+      <button class="btn" id="mirror" type="button">Spiegeln</button>
+    </div>
+  </div>
+</section>
+
+<script>
+(function () {
+  "use strict";
+  var SAMPLE = "Hallo und herzlich willkommen. Schön, dass du dir die Zeit nimmst.\n\n" +
+    "Heute geht es um eine einfache Frage. Wie bringt man eine Botschaft so auf den Punkt, dass sie hängen bleibt?\n\n" +
+    "Du brauchst keine perfekte Kulisse und kein Studio. Du brauchst eine klare Botschaft und den Mut, sie auszusprechen.\n\n" +
+    "Probier es einfach aus. Lies diesen Text laut vor und beobachte, wie er dir folgt. Mach ruhig eine Pause, dann wartet er auf dich.\n\n" +
+    "Danke dir für deine Aufmerksamkeit und bis zum nächsten Mal.";
+
+  var $ = function (id) { return document.getElementById(id); };
+  var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  var S = {
+    mode: SR ? "voice" : "auto", lang: "de-DE", wpm: 140, size: 64, mirror: false,
+    words: [], cur: 0, pos: 0, target: 0, dist: 1, lineY: 0,
+    running: false, raf: 0, last: 0, rec: null, listening: false, hideT: 0
+  };
+
+  // ---------- Speicher ----------
+  function load() {
+    try {
+      var t = localStorage.getItem("vp_text"); $("script").value = t ? t : SAMPLE;
+      var o = JSON.parse(localStorage.getItem("vp_opts") || "{}");
+      if (o.mode && (o.mode === "auto" || SR)) S.mode = o.mode;
+      if (o.lang) S.lang = o.lang;
+      if (o.wpm) S.wpm = o.wpm;
+      if (o.size) S.size = o.size;
+      else if (Math.min(window.innerWidth, window.innerHeight) < 600) S.size = 38;
+      S.mirror = !!o.mirror;
+    } catch (e) { $("script").value = SAMPLE; }
+  }
+  function save() {
+    try {
+      localStorage.setItem("vp_text", $("script").value);
+      localStorage.setItem("vp_opts", JSON.stringify({ mode: S.mode, lang: S.lang, wpm: S.wpm, size: S.size, mirror: S.mirror }));
+    } catch (e) {}
+  }
+
+  // ---------- Editor ----------
+  function fmt(sec) { sec = Math.max(0, Math.round(sec)); return Math.floor(sec / 60) + ":" + String(sec % 60).padStart(2, "0"); }
+  function countWords() { var m = $("script").value.trim().match(/\S+/g); return m ? m.length : 0; }
+  function refreshEditor() {
+    var n = countWords();
+    $("words").textContent = n;
+    $("dur").textContent = fmt(n / S.wpm * 60);
+    $("modeVoice").classList.toggle("on", S.mode === "voice");
+    $("modeAuto").classList.toggle("on", S.mode === "auto");
+    $("voiceOpts").hidden = S.mode !== "voice";
+    $("autoOpts").hidden = S.mode !== "auto";
+    $("lang").value = S.lang; $("wpm").value = S.wpm;
+    var sp = $("support");
+    if (S.mode === "voice") {
+      if (!SR) { sp.textContent = "Dieser Browser kann keine Sprache erkennen. Nutze Safari oder Chrome."; sp.className = "bad"; }
+      else if (!window.isSecureContext) { sp.textContent = "Mikrofon braucht eine https-Adresse."; sp.className = "bad"; }
+      else { sp.textContent = "Spracherkennung verfügbar."; sp.className = "ok"; }
+    } else { sp.textContent = "Der Text läuft im eingestellten Tempo."; sp.className = ""; }
+    save();
+  }
+  $("script").addEventListener("input", refreshEditor);
+  $("modeVoice").addEventListener("click", function () { S.mode = "voice"; refreshEditor(); });
+  $("modeAuto").addEventListener("click", function () { S.mode = "auto"; refreshEditor(); });
+  $("lang").addEventListener("change", function () { S.lang = this.value; refreshEditor(); });
+  $("wpm").addEventListener("input", function () { var v = parseInt(this.value, 10); if (v >= 60 && v <= 260) { S.wpm = v; refreshEditor(); } });
+  $("reset").addEventListener("click", function () { $("script").value = SAMPLE; refreshEditor(); });
+
+  // ---------- Text aufbereiten ----------
+  function norm(w) {
+    return w.toLowerCase().replace(/ß/g, "ss").normalize("NFC").replace(/[^\p{L}\p{N}]/gu, "");
+  }
+  function buildCopy(text) {
+    var copy = $("copy"); copy.innerHTML = ""; S.words = [];
+    text.split(/\n+/).forEach(function (para) {
+      if (!para.trim()) return;
+      var p = document.createElement("p");
+      para.trim().split(/\s+/).forEach(function (tok, i) {
+        if (i) p.appendChild(document.createTextNode(" "));
+        var n = norm(tok);
+        if (!n) { p.appendChild(document.createTextNode(tok)); return; }
+        var s = document.createElement("span");
+        s.className = "w"; s.textContent = tok; s.dataset.i = S.words.length;
+        p.appendChild(s);
+        S.words.push({ el: s, n: n });
+      });
+      copy.appendChild(p);
+    });
+  }
+
+  // ---------- Fuzzy-Abgleich ----------
+  function lev(a, b) {
+    if (Math.abs(a.length - b.length) > 2) return 9;
+    var prev = [], i, j;
+    for (j = 0; j <= b.length; j++) prev[j] = j;
+    for (i = 1; i <= a.length; i++) {
+      var cur = [i];
+      for (j = 1; j <= b.length; j++) cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+      prev = cur;
+    }
+    return prev[b.length];
+  }
+  function sim(a, b) {
+    if (a === b) return true;
+    var m = Math.min(a.length, b.length);
+    if (m >= 4 && (a.indexOf(b) === 0 || b.indexOf(a) === 0)) return true;
+    if (m >= 4) return lev(a, b) <= (m >= 8 ? 2 : 1);
+    return false;
+  }
+
+  function locate(tail) {
+    var W = S.words, best = null;
+    var lo = Math.max(0, S.cur - 6), hi = Math.min(W.length - 1, S.cur + 40);
+    var lastW = tail[tail.length - 1];
+    for (var end = lo; end <= hi; end++) {
+      if (!sim(W[end].n, lastW)) continue;
+      var score = 1, p = end - 1;
+      for (var t = tail.length - 2; t >= 0 && p >= 0; t--) {
+        for (var s = 0; s < 3 && p - s >= 0; s++) {
+          if (sim(W[p - s].n, tail[t])) { score++; p = p - s - 1; break; }
+        }
+      }
+      var dist = end + 1 - S.cur;
+      var val = score - Math.max(0, dist) * 0.05 - (dist < 0 ? 0.6 : 0);
+      if (!best || val > best.val) best = { end: end, score: score, val: val };
+    }
+    return best;
+  }
+
+  function onHeard(text) {
+    var toks = text.split(/\s+/).map(norm).filter(Boolean);
+    if (!toks.length) return;
+    $("heard").textContent = text.trim().split(/\s+/).slice(-10).join(" ");
+    var tail = toks.slice(-6);
+    var b = locate(tail);
+    if (!b) return;
+    var next = b.end + 1, jump = next - S.cur;
+    var need = jump <= 2 && jump >= 0 ? 1 : Math.min(3, Math.max(2, tail.length));
+    if (b.score < need) return;
+    if (jump < 0 && b.score < 3) return;
+    setCur(next);
+  }
+
+  function setCur(i) {
+    i = Math.max(0, Math.min(S.words.length, i));
+    var W = S.words, a = Math.min(i, S.cur), z = Math.max(i, S.cur);
+    for (var k = Math.max(0, a - 1); k <= Math.min(W.length - 1, z + 1); k++) {
+      W[k].el.classList.toggle("said", k < i);
+      W[k].el.classList.remove("next");
+    }
+    S.cur = i;
+    if (W[i]) W[i].el.classList.add("next");
+    S.target = targetFor(i);
+  }
+  function targetFor(i) {
+    var W = S.words;
+    if (!W.length) return 0;
+    var el = W[Math.min(i, W.length - 1)].el;
+    var t = el.offsetTop - S.size * 0.25;
+    if (i >= W.length) t += S.size * 1.35;
+    return Math.max(0, Math.min(S.dist, t));
+  }
+
+  // ---------- Darstellung ----------
+  function layout() {
+    var h = $("stage").clientHeight;
+    S.lineY = Math.round(h * 0.34);
+    $("copy").style.fontSize = S.size + "px";
+    $("inner").style.paddingTop = S.lineY + "px";
+    $("inner").style.paddingBottom = h + "px";
+    S.dist = Math.max(1, $("copy").offsetHeight - S.size);
+    $("sizeLbl").textContent = S.size;
+    $("speedLbl").textContent = S.wpm + "/min";
+    if (S.mode === "voice") { S.target = targetFor(S.cur); S.pos = S.target; }
+    else S.pos = Math.min(S.pos, S.dist);
+    paint();
+  }
+  function paint() {
+    $("inner").style.transform = "translate3d(0," + (-S.pos).toFixed(1) + "px,0)";
+    $("fill").style.width = Math.min(100, S.pos / S.dist * 100).toFixed(1) + "%";
+  }
+  function loop(ts) {
+    var dt = Math.min(0.1, (ts - S.last) / 1000); S.last = ts;
+    if (S.mode === "voice") {
+      S.pos += (S.target - S.pos) * (1 - Math.exp(-dt * 5));
+    } else if (S.running) {
+      var pxPerSec = S.dist / Math.max(1, S.words.length / S.wpm * 60);
+      S.pos += dt * pxPerSec;
+      if (S.pos >= S.dist) { S.pos = S.dist; stopAuto(); }
+    }
+    paint();
+    S.raf = requestAnimationFrame(loop);
+  }
+
+  // ---------- Mikrofon ----------
+  function pill(state, txt) { var p = $("pill"); p.className = state; $("pillTxt").textContent = txt; }
+  function makeRec() {
+    var r = new SR();
+    r.lang = S.lang; r.continuous = true; r.interimResults = true; r.maxAlternatives = 1;
+    r.onresult = function (e) {
+      var txt = "";
+      for (var i = 0; i < e.results.length; i++) txt += e.results[i][0].transcript + " ";
+      onHeard(txt);
+    };
+    r.onerror = function (e) {
+      if (e.error === "not-allowed" || e.error === "service-not-allowed") {
+        S.listening = false; pill("err", "Kein Mikrofonzugriff"); setPlayLabel();
+      } else if (e.error === "audio-capture") {
+        S.listening = false; pill("err", "Kein Mikrofon gefunden"); setPlayLabel();
+      }
+    };
+    r.onend = function () {
+      if (S.listening) setTimeout(function () { if (S.listening) { try { r.start(); } catch (x) {} } }, 150);
+    };
+    return r;
+  }
+  function startMic() {
+    if (!SR) { pill("err", "Keine Spracherkennung"); return; }
+    if (!S.rec || S.rec.lang !== S.lang) S.rec = makeRec();
+    S.listening = true;
+    try { S.rec.start(); } catch (x) {}
+    pill("live", "Hört zu"); setPlayLabel(); fadeSoon(); wake();
+  }
+  function stopMic() {
+    S.listening = false;
+    if (S.rec) { try { S.rec.stop(); } catch (x) {} }
+    pill("", "Pausiert"); setPlayLabel(); showBar();
+  }
+
+  // ---------- Auto-Modus ----------
+  function startAuto() { if (S.pos >= S.dist) S.pos = 0; S.running = true; pill("live", "Läuft"); setPlayLabel(); fadeSoon(); wake(); }
+  function stopAuto() { S.running = false; pill("", "Pausiert"); setPlayLabel(); showBar(); }
+
+  function setPlayLabel() {
+    var b = $("play");
+    if (S.mode === "voice") b.textContent = S.listening ? "Mikro aus" : "Mikro an";
+    else b.textContent = S.running ? "Pause" : "Start";
+  }
+  function toggle() {
+    if (S.mode === "voice") S.listening ? stopMic() : startMic();
+    else S.running ? stopAuto() : startAuto();
+  }
+
+  function showBar() { clearTimeout(S.hideT); $("bar").classList.remove("faded"); }
+  function fadeSoon() { clearTimeout(S.hideT); S.hideT = setTimeout(function () { if (S.listening || S.running) $("bar").classList.add("faded"); }, 3000); }
+  function wake() { try { if (navigator.wakeLock) navigator.wakeLock.request("screen").catch(function () {}); } catch (e) {} }
+
+  // ---------- Öffnen / Schließen ----------
+  function open() {
+    var txt = $("script").value.trim();
+    if (!txt) { $("script").focus(); return; }
+    buildCopy(txt);
+    $("editor").hidden = true; $("prompter").hidden = false;
+    $("stage").classList.toggle("mirror", S.mirror); $("mirror").classList.toggle("on", S.mirror);
+    $("speedGrp").hidden = S.mode !== "auto";
+    $("heard").hidden = S.mode !== "voice"; $("heard").textContent = "";
+    S.cur = 0; S.pos = 0; S.running = false;
+    setCur(0);
+    pill("", S.mode === "voice" ? "Bereit" : "Bereit");
+    setPlayLabel(); showBar();
+    layout();
+    S.last = performance.now(); cancelAnimationFrame(S.raf); S.raf = requestAnimationFrame(loop);
+  }
+  function close() {
+    if (S.listening) stopMic();
+    S.running = false; cancelAnimationFrame(S.raf);
+    $("prompter").hidden = true; $("editor").hidden = false;
+  }
+
+  $("go").addEventListener("click", open);
+  $("back").addEventListener("click", close);
+  $("play").addEventListener("click", toggle);
+  $("restart").addEventListener("click", function () { S.pos = 0; setCur(0); paint(); });
+  $("slower").addEventListener("click", function () { S.wpm = Math.max(60, S.wpm - 10); $("speedLbl").textContent = S.wpm + "/min"; save(); });
+  $("faster").addEventListener("click", function () { S.wpm = Math.min(260, S.wpm + 10); $("speedLbl").textContent = S.wpm + "/min"; save(); });
+  $("smaller").addEventListener("click", function () { S.size = Math.max(22, S.size - 4); layout(); save(); });
+  $("bigger").addEventListener("click", function () { S.size = Math.min(140, S.size + 4); layout(); save(); });
+  $("mirror").addEventListener("click", function () { S.mirror = !S.mirror; $("stage").classList.toggle("mirror", S.mirror); this.classList.toggle("on", S.mirror); save(); });
+
+  // Tippen auf ein Wort setzt die Position dorthin, Tippen daneben zeigt die Leiste
+  $("stage").addEventListener("click", function (e) {
+    var w = e.target.closest && e.target.closest(".w");
+    if (w) {
+      var i = parseInt(w.dataset.i, 10);
+      setCur(i);
+      if (S.mode === "auto") S.pos = S.target;
+    }
+    if ($("bar").classList.contains("faded")) { showBar(); fadeSoon(); }
+  });
+
+  document.addEventListener("keydown", function (e) {
+    if ($("prompter").hidden) return;
+    if (e.code === "Space") { e.preventDefault(); toggle(); }
+    else if (e.code === "Escape") close();
+    else if (e.code === "ArrowDown") { setCur(S.cur + 3); if (S.mode === "auto") S.pos = S.target; }
+    else if (e.code === "ArrowUp") { setCur(S.cur - 3); if (S.mode === "auto") S.pos = S.target; }
+  });
+  window.addEventListener("resize", function () { if (!$("prompter").hidden) layout(); });
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(function () { if (!$("prompter").hidden) layout(); });
+
+  load(); refreshEditor();
+})();
+</script>
+</body>
+</html>
