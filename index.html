@@ -355,19 +355,20 @@
     S.cur = Math.max(0, Math.min(S.words.length, i));
     S.target = targetFor(S.cur);
   }
-  // Zielposition ist immer die Zeile des nächsten Worts (mit einem Wort Vorlauf),
+  // Zielposition ist immer die Zeile des nächsten Worts (mit drei Wörtern Vorlauf),
   // so wechselt die Ansicht nur beim Zeilenwechsel
   function targetFor(i) {
     var W = S.words;
     if (!W.length) return 0;
-    var el = W[Math.min(i + 1, W.length - 1)].el;
+    var el = W[Math.min(i + 3, W.length - 1)].el;
     var t = el.offsetTop + el.offsetHeight / 2 - S.lineH / 2;
     if (i >= W.length) t += S.lineH;
     return Math.max(0, Math.min(S.dist, t));
   }
   function focusMask() {
     var y = S.lineY, h = S.lineH;
-    var g = "linear-gradient(to bottom, rgba(0,0,0,.18) 0px, rgba(0,0,0,.28) " + (y - 6) + "px, #000 " + y + "px, #000 " + (y + h) + "px, rgba(0,0,0,.55) " + (y + h + 6) + "px, rgba(0,0,0,.45) 100%)";
+    // aktuelle Zeile und nächste Zeile voll hell, danach sanft abgedunkelt
+    var g = "linear-gradient(to bottom, rgba(0,0,0,.18) 0px, rgba(0,0,0,.28) " + (y - 6) + "px, #000 " + y + "px, #000 " + (y + 2 * h) + "px, rgba(0,0,0,.5) " + (y + 3 * h) + "px, rgba(0,0,0,.4) 100%)";
     var st = $("stage").style;
     st.webkitMaskImage = g; st.maskImage = g;
     $("line").style.top = y + "px"; $("line").style.height = h + "px";
