@@ -44,18 +44,14 @@
 
   /* Prompter */
   #prompter { position: fixed; inset: 0; background: #000; }
-  #stage { position: absolute; inset: 0; overflow: hidden; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
-    -webkit-mask-image: linear-gradient(to bottom, rgba(0,0,0,.2) 0%, rgba(0,0,0,.35) 26%, #000 38%, #000 100%);
-            mask-image: linear-gradient(to bottom, rgba(0,0,0,.2) 0%, rgba(0,0,0,.35) 26%, #000 38%, #000 100%); }
+  #stage { position: absolute; inset: 0; overflow: hidden; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
   #stage.mirror { transform: scaleX(-1); }
   #inner { will-change: transform; padding-left: 7vw; padding-right: 7vw; }
   #copy { position: relative; margin: 0 auto; max-width: 1400px; font-weight: 700; line-height: 1.35; color: #fff; overflow-wrap: break-word; }
   #copy p { margin: 0 0 0.6em; }
-  #copy .w { transition: color .25s; cursor: pointer; }
-  #copy .w.said { color: #6b6b72; }
-  #copy .w.next { color: var(--accent); }
-  #line { position: absolute; left: 0; right: 0; top: 34%; pointer-events: none; }
-  #line::before, #line::after { content: ""; position: absolute; top: -12px; border: 12px solid transparent; }
+  #copy .w { cursor: pointer; }
+  #line { position: absolute; left: 1.5vw; right: 1.5vw; top: 34%; height: 80px; pointer-events: none; background: rgba(255,200,61,.07); border-radius: 12px; }
+  #line::before, #line::after { content: ""; position: absolute; top: calc(50% - 12px); border: 12px solid transparent; }
   #line::before { left: 0; border-left-color: var(--accent); border-right-width: 0; }
   #line::after { right: 0; border-right-color: var(--accent); border-left-width: 0; }
 
@@ -186,7 +182,7 @@
   var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   var S = {
     mode: SR ? "voice" : "auto", lang: "de-DE", wpm: 140, size: 64, mirror: false,
-    words: [], cur: 0, pos: 0, target: 0, dist: 1, lineY: 0,
+    words: [], cur: 0, pos: 0, target: 0, dist: 1, lineY: 0, lineH: 86,
     running: false, raf: 0, last: 0, rec: null, listening: false, hideT: 0
   };
 
@@ -313,23 +309,25 @@
   }
 
   function setCur(i) {
-    i = Math.max(0, Math.min(S.words.length, i));
-    var W = S.words, a = Math.min(i, S.cur), z = Math.max(i, S.cur);
-    for (var k = Math.max(0, a - 1); k <= Math.min(W.length - 1, z + 1); k++) {
-      W[k].el.classList.toggle("said", k < i);
-      W[k].el.classList.remove("next");
-    }
-    S.cur = i;
-    if (W[i]) W[i].el.classList.add("next");
-    S.target = targetFor(i);
+    S.cur = Math.max(0, Math.min(S.words.length, i));
+    S.target = targetFor(S.cur);
   }
+  // Zielposition ist immer die Zeile des nächsten Worts (mit einem Wort Vorlauf),
+  // so wechselt die Ansicht nur beim Zeilenwechsel
   function targetFor(i) {
     var W = S.words;
     if (!W.length) return 0;
-    var el = W[Math.min(i, W.length - 1)].el;
-    var t = el.offsetTop - S.size * 0.25;
-    if (i >= W.length) t += S.size * 1.35;
+    var el = W[Math.min(i + 1, W.length - 1)].el;
+    var t = el.offsetTop + el.offsetHeight / 2 - S.lineH / 2;
+    if (i >= W.length) t += S.lineH;
     return Math.max(0, Math.min(S.dist, t));
+  }
+  function focusMask() {
+    var y = S.lineY, h = S.lineH;
+    var g = "linear-gradient(to bottom, rgba(0,0,0,.18) 0px, rgba(0,0,0,.28) " + (y - 6) + "px, #000 " + y + "px, #000 " + (y + h) + "px, rgba(0,0,0,.55) " + (y + h + 6) + "px, rgba(0,0,0,.45) 100%)";
+    var st = $("stage").style;
+    st.webkitMaskImage = g; st.maskImage = g;
+    $("line").style.top = y + "px"; $("line").style.height = h + "px";
   }
 
   // ---------- Darstellung ----------
@@ -339,7 +337,9 @@
     $("copy").style.fontSize = S.size + "px";
     $("inner").style.paddingTop = S.lineY + "px";
     $("inner").style.paddingBottom = h + "px";
-    S.dist = Math.max(1, $("copy").offsetHeight - S.size);
+    S.lineH = Math.round(S.size * 1.35);
+    S.dist = Math.max(1, $("copy").offsetHeight - S.lineH);
+    focusMask();
     $("sizeLbl").textContent = S.size;
     $("speedLbl").textContent = S.wpm + "/min";
     if (S.mode === "voice") { S.target = targetFor(S.cur); S.pos = S.target; }
@@ -353,7 +353,7 @@
   function loop(ts) {
     var dt = Math.min(0.1, (ts - S.last) / 1000); S.last = ts;
     if (S.mode === "voice") {
-      S.pos += (S.target - S.pos) * (1 - Math.exp(-dt * 5));
+      S.pos += (S.target - S.pos) * (1 - Math.exp(-dt * 7));
     } else if (S.running) {
       var pxPerSec = S.dist / Math.max(1, S.words.length / S.wpm * 60);
       S.pos += dt * pxPerSec;
