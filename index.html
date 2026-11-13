@@ -47,21 +47,23 @@
   #stage { position: absolute; inset: 0; overflow: hidden; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
   #stage.mirror { transform: scaleX(-1); }
   #inner { will-change: transform; padding-left: 7vw; padding-right: 7vw; }
-  #copy { position: relative; margin: 0 auto; max-width: 1400px; font-weight: 700; line-height: 1.35; color: #fff; overflow-wrap: break-word; }
+  #copy { position: relative; margin: 0 auto; max-width: var(--col, 30ch); font-weight: 700; line-height: 1.35; color: #fff; overflow-wrap: break-word; }
   #copy p { margin: 0 0 0.6em; }
   #copy .w { cursor: pointer; }
+  #copy .em { text-decoration: underline; text-decoration-color: var(--accent); text-decoration-thickness: .08em; text-underline-offset: .14em; }
+  #copy .cue { display: inline-block; font-size: .42em; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: #1a1400; background: var(--accent); border-radius: 6px; padding: .15em .5em; vertical-align: .55em; }
   #line { position: absolute; left: 1.5vw; right: 1.5vw; top: 34%; height: 80px; pointer-events: none; background: rgba(255,200,61,.07); border-radius: 12px; }
   #line::before, #line::after { content: ""; position: absolute; top: calc(50% - 12px); border: 12px solid transparent; }
   #line::before { left: 0; border-left-color: var(--accent); border-right-width: 0; }
   #line::after { right: 0; border-right-color: var(--accent); border-left-width: 0; }
 
-  #pill { position: absolute; top: 14px; right: 16px; display: flex; align-items: center; gap: 8px; padding: 8px 14px; border-radius: 999px; background: rgba(20,20,22,.85); border: 1px solid var(--line); font-size: 15px; color: var(--muted); pointer-events: none; }
+  #pill { position: absolute; bottom: 14px; right: 16px; display: flex; align-items: center; gap: 8px; padding: 8px 14px; border-radius: 999px; background: rgba(20,20,22,.85); border: 1px solid var(--line); font-size: 15px; color: var(--muted); pointer-events: none; }
   #pill i { width: 10px; height: 10px; border-radius: 50%; background: var(--muted); }
   #pill.live i { background: var(--ok); box-shadow: 0 0 0 0 rgba(111,220,140,.7); animation: pulse 1.6s infinite; }
   #pill.live { color: var(--text); }
   #pill.err i { background: var(--bad); }
   @keyframes pulse { 70% { box-shadow: 0 0 0 10px rgba(111,220,140,0); } 100% { box-shadow: 0 0 0 0 rgba(111,220,140,0); } }
-  #heard { position: absolute; top: 16px; left: 16px; right: 220px; font-size: 15px; color: #6b6b72; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; direction: rtl; text-align: left; }
+  #heard { position: absolute; bottom: 20px; left: 16px; right: 200px; font-size: 15px; color: #6b6b72; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; direction: rtl; text-align: left; }
 
   #bar { position: absolute; left: 0; right: 0; bottom: 0; padding: 28px 20px 18px; background: linear-gradient(to top, rgba(0,0,0,.94), rgba(0,0,0,0)); transition: opacity .35s; }
   #bar.faded { opacity: 0; pointer-events: none; }
@@ -83,8 +85,11 @@
   /* Safe Areas für iPhone mit Notch oder Dynamic Island */
   #editor { padding-top: max(20px, env(safe-area-inset-top)); padding-left: max(24px, env(safe-area-inset-left)); padding-right: max(24px, env(safe-area-inset-right)); }
   #bar { padding-bottom: max(18px, env(safe-area-inset-bottom)); padding-left: max(20px, env(safe-area-inset-left)); padding-right: max(20px, env(safe-area-inset-right)); }
-  #pill { top: max(14px, env(safe-area-inset-top)); right: max(16px, env(safe-area-inset-right)); }
-  #heard { top: max(16px, env(safe-area-inset-top)); left: max(16px, env(safe-area-inset-left)); }
+  #pill { bottom: max(14px, env(safe-area-inset-bottom)); right: max(16px, env(safe-area-inset-right)); }
+  #heard { bottom: max(20px, env(safe-area-inset-bottom)); left: max(16px, env(safe-area-inset-left)); }
+  #bar:not(.faded) ~ #pill, #bar:not(.faded) ~ #heard { opacity: 0; }
+  .hint { font-size: 13px; line-height: 1.5; color: var(--muted); margin: 0; }
+  .hint code { color: var(--text); background: var(--bg); border-radius: 4px; padding: 1px 5px; }
 
   /* iPhone hochkant und quer: kompakte Bedienleiste */
   @media (max-width: 600px), (max-height: 500px) {
@@ -134,6 +139,22 @@
         <p id="support"></p>
       </div>
       <div class="card">
+        <span class="cap">Leselinie</span>
+        <div class="seg" role="group" aria-label="Leselinie">
+          <button type="button" id="posTop" class="on">Oben</button>
+          <button type="button" id="posMid">Mitte</button>
+        </div>
+        <span class="cap">Spaltenbreite</span>
+        <div class="seg" role="group" aria-label="Spaltenbreite">
+          <button type="button" data-col="narrow">Schmal</button>
+          <button type="button" data-col="medium">Mittel</button>
+          <button type="button" data-col="wide">Breit</button>
+        </div>
+      </div>
+      <div class="card">
+        <p class="hint"><code>[Pause]</code> zeigt eine Regieanweisung, die beim Mitlesen übersprungen wird. <code>*Wort*</code> wird als Betonung unterstrichen.</p>
+      </div>
+      <div class="card">
         <div class="stat"><span>Wörter</span><b id="words">0</b></div>
         <div class="stat"><span>Sprechdauer ca.</span><b id="dur">0:00</b></div>
       </div>
@@ -146,8 +167,6 @@
 <section id="prompter" hidden>
   <div id="stage"><div id="inner"><div id="copy"></div></div></div>
   <div id="line"></div>
-  <div id="heard" aria-hidden="true"></div>
-  <div id="pill"><i></i><span id="pillTxt">Bereit</span></div>
   <div id="bar">
     <div id="progress"><i id="fill"></i></div>
     <div class="controls">
@@ -164,16 +183,19 @@
         <span class="lbl" id="sizeLbl">64</span>
         <button class="btn" id="bigger" type="button" aria-label="Schrift größer">A+</button>
       </div>
+      <button class="btn" id="colBtn" type="button">Spalte</button>
       <button class="btn" id="mirror" type="button">Spiegeln</button>
     </div>
   </div>
+  <div id="heard" aria-hidden="true"></div>
+  <div id="pill"><i></i><span id="pillTxt">Bereit</span></div>
 </section>
 
 <script>
 (function () {
   "use strict";
   var SAMPLE = "Hallo und herzlich willkommen. Schön, dass du dir die Zeit nimmst.\n\n" +
-    "Heute geht es um eine einfache Frage. Wie bringt man eine Botschaft so auf den Punkt, dass sie hängen bleibt?\n\n" +
+    "[Blick in die Kamera] Heute geht es um eine einfache Frage. Wie bringt man eine Botschaft so auf den Punkt, dass sie *hängen bleibt*? [Pause]\n\n" +
     "Du brauchst keine perfekte Kulisse und kein Studio. Du brauchst eine klare Botschaft und den Mut, sie auszusprechen.\n\n" +
     "Probier es einfach aus. Lies diesen Text laut vor und beobachte, wie er dir folgt. Mach ruhig eine Pause, dann wartet er auf dich.\n\n" +
     "Danke dir für deine Aufmerksamkeit und bis zum nächsten Mal.";
@@ -181,7 +203,7 @@
   var $ = function (id) { return document.getElementById(id); };
   var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   var S = {
-    mode: SR ? "voice" : "auto", lang: "de-DE", wpm: 140, size: 64, mirror: false,
+    mode: SR ? "voice" : "auto", lang: "de-DE", wpm: 140, size: 64, mirror: false, linePos: "top", col: "narrow",
     words: [], cur: 0, pos: 0, target: 0, dist: 1, lineY: 0, lineH: 86,
     running: false, raf: 0, last: 0, rec: null, listening: false, hideT: 0
   };
@@ -197,18 +219,20 @@
       if (o.size) S.size = o.size;
       else if (Math.min(window.innerWidth, window.innerHeight) < 600) S.size = 38;
       S.mirror = !!o.mirror;
+      if (o.linePos) S.linePos = o.linePos;
+      if (o.col) S.col = o.col;
     } catch (e) { $("script").value = SAMPLE; }
   }
   function save() {
     try {
       localStorage.setItem("vp_text", $("script").value);
-      localStorage.setItem("vp_opts", JSON.stringify({ mode: S.mode, lang: S.lang, wpm: S.wpm, size: S.size, mirror: S.mirror }));
+      localStorage.setItem("vp_opts", JSON.stringify({ mode: S.mode, lang: S.lang, wpm: S.wpm, size: S.size, mirror: S.mirror, linePos: S.linePos, col: S.col }));
     } catch (e) {}
   }
 
   // ---------- Editor ----------
   function fmt(sec) { sec = Math.max(0, Math.round(sec)); return Math.floor(sec / 60) + ":" + String(sec % 60).padStart(2, "0"); }
-  function countWords() { var m = $("script").value.trim().match(/\S+/g); return m ? m.length : 0; }
+  function countWords() { var m = $("script").value.replace(/\[[^\]]*\]/g, " ").replace(/\*/g, "").trim().match(/\S+/g); return m ? m.length : 0; }
   function refreshEditor() {
     var n = countWords();
     $("words").textContent = n;
@@ -218,6 +242,9 @@
     $("voiceOpts").hidden = S.mode !== "voice";
     $("autoOpts").hidden = S.mode !== "auto";
     $("lang").value = S.lang; $("wpm").value = S.wpm;
+    $("posTop").classList.toggle("on", S.linePos === "top");
+    $("posMid").classList.toggle("on", S.linePos === "mid");
+    document.querySelectorAll("[data-col]").forEach(function (b) { b.classList.toggle("on", b.dataset.col === S.col); });
     var sp = $("support");
     if (S.mode === "voice") {
       if (!SR) { sp.textContent = "Dieser Browser kann keine Sprache erkennen. Nutze Safari oder Chrome."; sp.className = "bad"; }
@@ -231,25 +258,41 @@
   $("modeAuto").addEventListener("click", function () { S.mode = "auto"; refreshEditor(); });
   $("lang").addEventListener("change", function () { S.lang = this.value; refreshEditor(); });
   $("wpm").addEventListener("input", function () { var v = parseInt(this.value, 10); if (v >= 60 && v <= 260) { S.wpm = v; refreshEditor(); } });
+  $("posTop").addEventListener("click", function () { S.linePos = "top"; refreshEditor(); });
+  $("posMid").addEventListener("click", function () { S.linePos = "mid"; refreshEditor(); });
+  document.querySelectorAll("[data-col]").forEach(function (b) { b.addEventListener("click", function () { S.col = b.dataset.col; refreshEditor(); }); });
   $("reset").addEventListener("click", function () { $("script").value = SAMPLE; refreshEditor(); });
 
   // ---------- Text aufbereiten ----------
   function norm(w) {
     return w.toLowerCase().replace(/ß/g, "ss").normalize("NFC").replace(/[^\p{L}\p{N}]/gu, "");
   }
+  // [Regieanweisung] wird angezeigt, aber nicht abgeglichen. *Betonung* wird unterstrichen.
   function buildCopy(text) {
     var copy = $("copy"); copy.innerHTML = ""; S.words = [];
     text.split(/\n+/).forEach(function (para) {
       if (!para.trim()) return;
-      var p = document.createElement("p");
-      para.trim().split(/\s+/).forEach(function (tok, i) {
-        if (i) p.appendChild(document.createTextNode(" "));
-        var n = norm(tok);
-        if (!n) { p.appendChild(document.createTextNode(tok)); return; }
-        var s = document.createElement("span");
-        s.className = "w"; s.textContent = tok; s.dataset.i = S.words.length;
-        p.appendChild(s);
-        S.words.push({ el: s, n: n });
+      var p = document.createElement("p"), first = true;
+      para.trim().split(/(\[[^\]]*\]|\*[^*]+\*)/).forEach(function (seg) {
+        if (!seg || !seg.trim()) return;
+        if (seg.charAt(0) === "[" && seg.charAt(seg.length - 1) === "]") {
+          if (!first) p.appendChild(document.createTextNode(" "));
+          var c = document.createElement("span");
+          c.className = "cue"; c.textContent = seg.slice(1, -1).trim();
+          p.appendChild(c); first = false; return;
+        }
+        var emph = seg.charAt(0) === "*" && seg.charAt(seg.length - 1) === "*" && seg.length > 2;
+        if (emph) seg = seg.slice(1, -1);
+        seg.trim().split(/\s+/).forEach(function (tok) {
+          if (!first && !/^[.,;:!?)]/.test(tok)) p.appendChild(document.createTextNode(" "));
+          first = false;
+          var n = norm(tok);
+          if (!n) { p.appendChild(document.createTextNode(tok)); return; }
+          var s = document.createElement("span");
+          s.className = emph ? "w em" : "w"; s.textContent = tok; s.dataset.i = S.words.length;
+          p.appendChild(s);
+          S.words.push({ el: s, n: n });
+        });
       });
       copy.appendChild(p);
     });
@@ -333,7 +376,10 @@
   // ---------- Darstellung ----------
   function layout() {
     var h = $("stage").clientHeight;
-    S.lineY = Math.round(h * 0.34);
+    S.lineY = S.linePos === "top" ? Math.max(24, Math.round(h * 0.07)) : Math.round(h * 0.34);
+    var COLS = { narrow: "20ch", medium: "28ch", wide: "100%" };
+    $("copy").style.setProperty("--col", COLS[S.col] || COLS.narrow);
+    $("colBtn").textContent = { narrow: "Schmal", medium: "Mittel", wide: "Breit" }[S.col] || "Schmal";
     $("copy").style.fontSize = S.size + "px";
     $("inner").style.paddingTop = S.lineY + "px";
     $("inner").style.paddingBottom = h + "px";
@@ -446,6 +492,11 @@
   $("faster").addEventListener("click", function () { S.wpm = Math.min(260, S.wpm + 10); $("speedLbl").textContent = S.wpm + "/min"; save(); });
   $("smaller").addEventListener("click", function () { S.size = Math.max(22, S.size - 4); layout(); save(); });
   $("bigger").addEventListener("click", function () { S.size = Math.min(140, S.size + 4); layout(); save(); });
+  $("colBtn").addEventListener("click", function () {
+    var order = ["narrow", "medium", "wide"];
+    S.col = order[(order.indexOf(S.col) + 1) % order.length];
+    layout(); save();
+  });
   $("mirror").addEventListener("click", function () { S.mirror = !S.mirror; $("stage").classList.toggle("mirror", S.mirror); this.classList.toggle("on", S.mirror); save(); });
 
   // Tippen auf ein Wort setzt die Position dorthin, Tippen daneben zeigt die Leiste
