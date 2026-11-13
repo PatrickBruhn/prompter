@@ -87,7 +87,9 @@
   #bar { padding-bottom: max(18px, env(safe-area-inset-bottom)); padding-left: max(20px, env(safe-area-inset-left)); padding-right: max(20px, env(safe-area-inset-right)); }
   #pill { bottom: max(14px, env(safe-area-inset-bottom)); right: max(16px, env(safe-area-inset-right)); }
   #heard { bottom: max(20px, env(safe-area-inset-bottom)); left: max(16px, env(safe-area-inset-left)); }
-  #bar:not(.faded) ~ #pill, #bar:not(.faded) ~ #heard { opacity: 0; }
+  #bar:not(.faded) ~ #pill:not(.err), #bar:not(.faded) ~ #heard { opacity: 0; }
+  #pill.err { bottom: auto; top: max(14px, env(safe-area-inset-top)); right: auto; left: 50%; transform: translateX(-50%); color: var(--text); max-width: calc(100% - 32px); }
+  button { touch-action: manipulation; }
   .hint { font-size: 13px; line-height: 1.5; color: var(--muted); margin: 0; }
   .hint code { color: var(--text); background: var(--bg); border-radius: 4px; padding: 1px 5px; }
 
@@ -105,6 +107,9 @@
     #inner { padding-left: 6vw; padding-right: 6vw; }
     h1 { font-size: 22px; }
   }
+  @media (max-width: 760px) {
+    .side .primary { position: sticky; bottom: max(12px, env(safe-area-inset-bottom)); box-shadow: 0 8px 24px rgba(0,0,0,.6); }
+  }
   @media (prefers-reduced-motion: reduce) { #bar, #copy .w { transition: none; } #pill.live i { animation: none; } }
 </style>
 </head>
@@ -113,7 +118,7 @@
 <section id="editor">
   <header>
     <h1>Voice Teleprompter</h1>
-    <p>Der Text folgt deiner Stimme. <span style="opacity:.6">Version 6</span></p>
+    <p>Der Text folgt deiner Stimme. <span style="opacity:.6">Version 7</span></p>
   </header>
   <div class="editor-body">
     <textarea id="script" spellcheck="false" aria-label="Text für den Teleprompter"></textarea>
@@ -163,7 +168,10 @@
         <div class="stat"><span>Wörter</span><b id="words">0</b></div>
         <div class="stat"><span>Sprechdauer ca.</span><b id="dur">0:00</b></div>
       </div>
-      <button class="ghost" id="reset" type="button">Beispieltext laden</button>
+      <div style="display:flex;gap:10px">
+        <button class="ghost" id="clear" type="button" style="flex:1">Text leeren</button>
+        <button class="ghost" id="reset" type="button" style="flex:1">Beispieltext</button>
+      </div>
       <button class="primary" id="go" type="button">Prompter starten</button>
     </aside>
   </div>
@@ -210,7 +218,7 @@
   var S = {
     mode: SR ? "voice" : "auto", lang: "de-DE", wpm: 140, size: 64, mirror: false, linePos: "top", col: "narrow", cues: false,
     words: [], cur: 0, pos: 0, target: 0, dist: 1, lineY: 0, lineH: 86,
-    running: false, raf: 0, last: 0, rec: null, listening: false, hideT: 0
+    running: false, exact: true, restartT: 0, raf: 0, last: 0, rec: null, listening: false, hideT: 0
   };
 
   // ---------- Speicher ----------
@@ -272,7 +280,15 @@
   $("posTop").addEventListener("click", function () { S.linePos = "top"; refreshEditor(); });
   $("posMid").addEventListener("click", function () { S.linePos = "mid"; refreshEditor(); });
   document.querySelectorAll("[data-col]").forEach(function (b) { b.addEventListener("click", function () { S.col = b.dataset.col; refreshEditor(); }); });
-  $("reset").addEventListener("click", function () { $("script").value = SAMPLE; refreshEditor(); });
+  function hasOwnText() { var v = $("script").value.trim(); return v && v !== SAMPLE.trim(); }
+  $("reset").addEventListener("click", function () {
+    if (hasOwnText() && !window.confirm("Deinen Text durch den Beispieltext ersetzen?")) return;
+    $("script").value = SAMPLE; refreshEditor();
+  });
+  $("clear").addEventListener("click", function () {
+    if (hasOwnText() && !window.confirm("Deinen Text löschen?")) return;
+    $("script").value = ""; refreshEditor(); $("script").focus();
+  });
 
   // ---------- Text aufbereiten ----------
   function norm(w) {
@@ -360,19 +376,26 @@
     var need = jump <= 2 && jump >= 0 ? 1 : Math.min(3, Math.max(2, tail.length));
     if (b.score < need) return;
     if (jump < 0 && b.score < 3) return;
-    setCur(next);
+    setCur(next, false);
   }
 
-  function setCur(i) {
+  function setCur(i, exact) {
     S.cur = Math.max(0, Math.min(S.words.length, i));
+    S.exact = !!exact || S.cur === 0;
     S.target = targetFor(S.cur);
   }
-  // Zielposition ist immer die Zeile des nächsten Worts (mit drei Wörtern Vorlauf),
-  // so wechselt die Ansicht nur beim Zeilenwechsel
+  // Manueller Sprung: Erkennung neu starten, damit alte Wörter die Position nicht zurückziehen
+  function jumpTo(i) {
+    setCur(i, true);
+    if (S.mode === "auto") S.pos = S.target;
+    if (S.listening && S.rec) { try { S.rec.abort(); } catch (x) {} }
+  }
+  // Das Band zeigt die Zeile des nächsten Worts. Die Verzögerung der Erkennung
+  // fängt die zweite helle Zeile darunter ab, so wird nie ein ungelesenes Wort abgedunkelt.
   function targetFor(i) {
     var W = S.words;
     if (!W.length) return 0;
-    var el = W[Math.min(i + 3, W.length - 1)].el;
+    var el = W[Math.min(i, W.length - 1)].el;
     var t = el.offsetTop + el.offsetHeight / 2 - S.lineH / 2;
     if (i >= W.length) t += S.lineH;
     return Math.max(0, Math.min(S.dist, t));
@@ -388,6 +411,7 @@
 
   // ---------- Darstellung ----------
   function layout() {
+    var ratio = S.dist > 1 ? S.pos / S.dist : 0;
     var h = $("stage").clientHeight;
     S.lineY = S.linePos === "top" ? Math.max(24, Math.round(h * 0.07)) : Math.round(h * 0.34);
     var COLS = { narrow: "20ch", medium: "28ch", wide: "100%" };
@@ -402,7 +426,7 @@
     $("sizeLbl").textContent = S.size;
     $("speedLbl").textContent = S.wpm + "/min";
     if (S.mode === "voice") { S.target = targetFor(S.cur); S.pos = S.target; }
-    else S.pos = Math.min(S.pos, S.dist);
+    else S.pos = Math.min(S.dist, ratio * S.dist);
     paint();
   }
   function paint() {
@@ -434,15 +458,20 @@
     };
     r.onerror = function (e) {
       if (e.error === "not-allowed" || e.error === "service-not-allowed") {
-        S.listening = false; pill("err", "Kein Mikrofonzugriff"); setPlayLabel();
+        S.listening = false; pill("err", "Kein Mikrofonzugriff. Mikrofon und Diktierfunktion in den Einstellungen erlauben."); setPlayLabel(); showBar();
       } else if (e.error === "audio-capture") {
-        S.listening = false; pill("err", "Kein Mikrofon gefunden"); setPlayLabel();
+        S.listening = false; pill("err", "Kein Mikrofon gefunden"); setPlayLabel(); showBar();
       }
     };
-    r.onend = function () {
-      if (S.listening) setTimeout(function () { if (S.listening) { try { r.start(); } catch (x) {} } }, 150);
-    };
+    r.onend = function () { if (S.listening) restartRec(150); };
     return r;
+  }
+  function restartRec(delay) {
+    clearTimeout(S.restartT);
+    S.restartT = setTimeout(function () {
+      if (!S.listening || document.hidden) return;
+      try { S.rec.start(); } catch (x) { restartRec(1000); }
+    }, delay);
   }
   function startMic() {
     if (!SR) { pill("err", "Keine Spracherkennung"); return; }
@@ -474,6 +503,11 @@
   function showBar() { clearTimeout(S.hideT); $("bar").classList.remove("faded"); }
   function fadeSoon() { clearTimeout(S.hideT); S.hideT = setTimeout(function () { if (S.listening || S.running) $("bar").classList.add("faded"); }, 3000); }
   function wake() { try { if (navigator.wakeLock) navigator.wakeLock.request("screen").catch(function () {}); } catch (e) {} }
+  document.addEventListener("visibilitychange", function () {
+    if (document.hidden || $("prompter").hidden) return;
+    if (S.listening || S.running) wake();
+    if (S.listening) restartRec(300);
+  });
 
   // ---------- Öffnen / Schließen ----------
   function open() {
@@ -484,9 +518,9 @@
     $("stage").classList.toggle("mirror", S.mirror); $("mirror").classList.toggle("on", S.mirror);
     $("speedGrp").hidden = S.mode !== "auto";
     $("heard").hidden = S.mode !== "voice"; $("heard").textContent = "";
-    S.cur = 0; S.pos = 0; S.running = false;
-    setCur(0);
-    pill("", S.mode === "voice" ? "Bereit" : "Bereit");
+    S.cur = 0; S.pos = 0; S.dist = 1; S.running = false;
+    setCur(0, true);
+    pill("", "Bereit");
     setPlayLabel(); showBar();
     layout();
     S.last = performance.now(); cancelAnimationFrame(S.raf); S.raf = requestAnimationFrame(loop);
@@ -500,7 +534,7 @@
   $("go").addEventListener("click", open);
   $("back").addEventListener("click", close);
   $("play").addEventListener("click", toggle);
-  $("restart").addEventListener("click", function () { S.pos = 0; setCur(0); paint(); });
+  $("restart").addEventListener("click", function () { jumpTo(0); S.pos = S.target; paint(); });
   $("slower").addEventListener("click", function () { S.wpm = Math.max(60, S.wpm - 10); $("speedLbl").textContent = S.wpm + "/min"; save(); });
   $("faster").addEventListener("click", function () { S.wpm = Math.min(260, S.wpm + 10); $("speedLbl").textContent = S.wpm + "/min"; save(); });
   $("smaller").addEventListener("click", function () { S.size = Math.max(22, S.size - 4); layout(); save(); });
@@ -514,21 +548,18 @@
 
   // Tippen auf ein Wort setzt die Position dorthin, Tippen daneben zeigt die Leiste
   $("stage").addEventListener("click", function (e) {
+    // Erster Tipp bei ausgeblendeter Leiste zeigt nur die Leiste, damit nichts versehentlich springt
+    if ($("bar").classList.contains("faded")) { showBar(); fadeSoon(); return; }
     var w = e.target.closest && e.target.closest(".w");
-    if (w) {
-      var i = parseInt(w.dataset.i, 10);
-      setCur(i);
-      if (S.mode === "auto") S.pos = S.target;
-    }
-    if ($("bar").classList.contains("faded")) { showBar(); fadeSoon(); }
+    if (w) jumpTo(parseInt(w.dataset.i, 10));
   });
 
   document.addEventListener("keydown", function (e) {
     if ($("prompter").hidden) return;
     if (e.code === "Space") { e.preventDefault(); toggle(); }
     else if (e.code === "Escape") close();
-    else if (e.code === "ArrowDown") { setCur(S.cur + 3); if (S.mode === "auto") S.pos = S.target; }
-    else if (e.code === "ArrowUp") { setCur(S.cur - 3); if (S.mode === "auto") S.pos = S.target; }
+    else if (e.code === "ArrowDown") jumpTo(S.cur + 3);
+    else if (e.code === "ArrowUp") jumpTo(S.cur - 3);
   });
   window.addEventListener("resize", function () { if (!$("prompter").hidden) layout(); });
   if (document.fonts && document.fonts.ready) document.fonts.ready.then(function () { if (!$("prompter").hidden) layout(); });
