@@ -4,6 +4,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Prompter">
+<meta name="theme-color" content="#0b0b0c">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-180.png">
 <title>Voice Teleprompter</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -118,7 +124,7 @@
 <section id="editor">
   <header>
     <h1>Voice Teleprompter</h1>
-    <p>Der Text folgt deiner Stimme. <span style="opacity:.6">Version 8</span></p>
+    <p>Der Text folgt deiner Stimme. <span style="opacity:.6">Version 9</span></p>
   </header>
   <div class="editor-body">
     <textarea id="script" spellcheck="false" aria-label="Text für den Teleprompter"></textarea>
@@ -142,6 +148,10 @@
           <input id="wpm" class="num" type="number" inputmode="numeric" min="60" max="260" value="140">
         </div>
         <p id="support"></p>
+      </div>
+      <div class="card" id="homeHint" hidden>
+        <span class="cap">Ohne Browserleiste</span>
+        <p class="hint">Die Leiste oben schiebt den Text von der Kamera weg. Leg den Prompter einmal auf den Home-Bildschirm. Tippe dazu auf Teilen und dann auf „Zum Home-Bildschirm“. Von dort startet er ohne Leiste.</p>
       </div>
       <div class="card">
         <span class="cap">Leselinie</span>
@@ -196,6 +206,7 @@
         <span class="lbl" id="sizeLbl">64</span>
         <button class="btn" id="bigger" type="button" aria-label="Schrift größer">A+</button>
       </div>
+      <button class="btn" id="fsBtn" type="button" hidden>Vollbild</button>
       <button class="btn" id="colBtn" type="button">Spalte</button>
       <button class="btn" id="mirror" type="button">Spiegeln</button>
     </div>
@@ -517,11 +528,35 @@
     if (S.listening) restartRec(300);
   });
 
+  // ---------- Vollbild ----------
+  var standalone = (window.matchMedia && (matchMedia("(display-mode: fullscreen)").matches || matchMedia("(display-mode: standalone)").matches)) || navigator.standalone === true;
+  var fsEl = document.documentElement;
+  var canFs = !standalone && !!(fsEl.requestFullscreen || fsEl.webkitRequestFullscreen);
+  function isFs() { return !!(document.fullscreenElement || document.webkitFullscreenElement); }
+  function enterFs() {
+    if (!canFs || isFs()) return;
+    try {
+      var r = fsEl.requestFullscreen ? fsEl.requestFullscreen({ navigationUI: "hide" }) : fsEl.webkitRequestFullscreen();
+      if (r && r.catch) r.catch(function () {});
+    } catch (x) {}
+  }
+  function exitFs() {
+    if (!isFs()) return;
+    try { var r = document.exitFullscreen ? document.exitFullscreen() : document.webkitExitFullscreen(); if (r && r.catch) r.catch(function () {}); } catch (x) {}
+  }
+  function fsLabel() { $("fsBtn").textContent = isFs() ? "Vollbild aus" : "Vollbild"; $("fsBtn").classList.toggle("on", isFs()); }
+  $("fsBtn").hidden = !canFs;
+  $("homeHint").hidden = standalone;
+  $("fsBtn").addEventListener("click", function () { isFs() ? exitFs() : enterFs(); });
+  document.addEventListener("fullscreenchange", function () { fsLabel(); setTimeout(layout, 100); });
+  document.addEventListener("webkitfullscreenchange", function () { fsLabel(); setTimeout(layout, 100); });
+
   // ---------- Öffnen / Schließen ----------
   function open() {
     var txt = $("script").value.trim();
     if (!txt) { $("script").focus(); return; }
     buildCopy(txt);
+    enterFs();
     $("editor").hidden = true; $("prompter").hidden = false;
     $("stage").classList.toggle("mirror", S.mirror); $("mirror").classList.toggle("on", S.mirror);
     $("speedGrp").hidden = S.mode !== "auto";
@@ -534,6 +569,7 @@
     S.last = performance.now(); cancelAnimationFrame(S.raf); S.raf = requestAnimationFrame(loop);
   }
   function close() {
+    exitFs();
     if (S.listening) stopMic();
     S.running = false; cancelAnimationFrame(S.raf);
     $("prompter").hidden = true; $("editor").hidden = false;
